@@ -37,141 +37,103 @@ For each record in the data set it is provided:
 ## Data processing
 Data processing took place using the run_analysis script. This script takes the raw data and transforms it into a single tidy data set. In this section the code of this script is described.
 
-
+#### Step 1
+The first step is to load necessary libraries. We then check to see if the data is present in the local directory and download it if not.
 ```r
-#Step 0: download the file (if not already done) and unzip it
-
-#Check if the zipfile containing the raw data is present and download it if this is not the case.
-if (!file.exists("phonedata.zip")) {
-  url  = "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip"
-  dest = "phonedata.zip"
-  meth = "internal"
-  quit = TRUE
-  mode = "wb"
-  download.file(url, dest, meth, quit, mode)
-  #Works on tested operating system (Windows 7). Please change values if needed.
-  
-  #Unzip the zipfile into the working directory.
-  unzip("phonedata.zip")
-} 
-
-# Load the required libraries
-library(dplyr)
 library(stringr)
 library(tidyr)
+library(dplyr)
 
-print("step 0 complete")
+#Check if the zipfile containing the raw data is present and download it if this is not the case.
+if (!file.exists("cleandata.zip")) {
+  download.file(
+    url  = "https://d396qusza40orc.cloudfront.net/getdata%2Fprojectfiles%2FUCI%20HAR%20Dataset.zip",
+    destfile = "cleandata.zip",
+    meth = "curl",
+    mode = "wb"
+  )
+  
+  #Unzip the zipfile into the working directory.
+  unzip("cleandata.zip")
+}
+```
 
-### Step 1: read in training data sets, apply initial column names and combine them into a combined variable
+##### Step 2
+Here we load the various datasets and join them into one complete set.
+```r
+# Load all the data
+features = read.table("./UCI HAR Dataset/features.txt", stringsAsFactors = FALSE)
 
-#Read in the raw data files (training sets)
-features <- read.table("./UCI HAR Dataset/features.txt", stringsAsFactors = FALSE)
-xtrn <- read.table("./UCI HAR Dataset/train/X_train.txt", nrows = 7352)
-ytrn <- read.table("./UCI HAR Dataset/train/y_train.txt")
-strn <- read.table("./UCI HAR Dataset/train/subject_train.txt")
+x.train = read.table("./UCI HAR Dataset/train/X_train.txt")
+y.train = read.table("./UCI HAR Dataset/train/y_train.txt")
+subj.train = read.table("./UCI HAR Dataset/train/subject_train.txt")
 
-#Read in the column names (training sets)
-colnames(xtrn) <- features$V2
-colnames(ytrn) <- "Activity"
-colnames(strn) <- "Subject"
+x.test = read.table("./UCI HAR Dataset/test/X_test.txt")
+y.test = read.table("./UCI HAR Dataset/test/y_test.txt")
+subj.test = read.table("./UCI HAR Dataset/test/subject_test.txt")
 
-#Bind the differnt raw data files (training sets)
-train <- cbind(strn, ytrn, xtrn)
+# Combine all the data
+dataset = rbind(
+    cbind(subj.train, x.train, y.train),
+    cbind(subj.test, x.test, y.test)
+  )
+colnames(dataset) = c('Subject', features$V2, 'ActivityID')
+```
 
-# Read in test data sets, apply initial column names and combine them into a combined variable
+#### Step 3
+Here we subset the data to the relevant columns and rename them to have more understandable names.
+```r
+# Filter columns down to mean/std dev related ones
+keep.ix = grepl("mean|std|Subject|ActivityID", colnames(dataset)) &
+  !grepl("meanFreq", colnames(dataset))
+dataset = dataset[, keep.ix]
 
-#Read in the raw data files (test sets)
-xtest <- read.table("./UCI HAR Dataset/test/X_test.txt", nrows = 2947)
-ytest <- read.table("./UCI HAR Dataset/test/y_test.txt")
-stest <- read.table("./UCI HAR Dataset/test/subject_test.txt")
+# Rename activities
+activity.names = read.table("./UCI HAR Dataset/activity_labels.txt", stringsAsFactors = FALSE)
+colnames(activity.names) = c("ActivityID", "Activity") 
+dataset = merge(dataset, activity.names, by = "ActivityID")
+# Reorder columns and drop activity ID
+dataset = dataset[, c("Subject", "Activity", colnames(dataset)[!grepl("Subject|Activity", colnames(dataset))])]
 
-#Read in the column names (test sets)
-colnames(xtest) <- features$V2
-colnames(ytest) <- "Activity"
-colnames(stest) <- "Subject"
+# Clean up names
+tmp.names = colnames(dataset)
 
-#Bind the differnt raw data files (test sets)
-test <- cbind(stest, ytest, xtest)
+tmp.names = str_replace_all(tmp.names, "Acc", "-acceleration-")
+tmp.names = str_replace_all(tmp.names, "Gyro", "-gyroscope-")
+tmp.names = str_replace_all(tmp.names, "Mag", "-magnitude")
+tmp.names = str_replace_all(tmp.names, "\\(\\)", "")
+tmp.names = str_replace_all(tmp.names, "^t", "time-")
+tmp.names = str_replace_all(tmp.names, "^f", "frequency-")
+tmp.names = str_replace_all(tmp.names, "tBody", "time-body-")
+tmp.names = str_replace_all(tmp.names, "BodyBody", "body")
+tmp.names = str_replace_all(tmp.names, "--", "-")
 
-# Combine both the train and test data sets into a single data frame (df)
-df <- rbind(test, train)
+tmp.names = tolower(tmp.names)
 
-print("step 1 complete")
+colnames(dataset) = tmp.names
+```
 
-### Step 2: filter columns to just the activity, subject, and measurement columns with mean and std (standard deviation) and call data frame skinny
+#### Step 4
+Finally we map the data to a set of key value pairs, keyed by subject, activity, and sensor. We calculate the mean per key and write to an output file.
+```r
+# Collapse columns to key-value pairs (keys: subject, activity, sensor) 
+dataset = dataset %>% gather(sensor, value, -(1:2))
 
-keepnames <- grepl("mean|std|Subject|Activity", colnames(df)) & 
-             !grepl("meanFreq", colnames(df))
-
-skinny <- df[, keepnames]
-
-print("step 2 complete")
-
-### Step 3: change Activities from numeric to names 
-
-# Load in activity names file and add appropriate column names prior to join.
-activity_names <- read.table("./UCI HAR Dataset/activity_labels.txt", stringsAsFactors = FALSE)
-colnames(activity_names) <- c("Activity", "ActDesc")
-
-# Join activity names with skinny by Activity in each data frame.
-skinny <- tbl_df(skinny)
-skinny <- inner_join(skinny, activity_names)
-
-# Reorder columns to move new activity names to first column and remove and rename description as activity
-skinny <- skinny[,c(69, 1:68)]
-
-colnames(skinny)[1] <- "Activity"
-
-print("step 3 complete")
-### Step 4: rename variable names in skinny to make more sense and separate by "-"
-
-#Store the column names in a temporary variable
-pracnames <- names(skinny)
-
-#Change the names in the temporary variable
-pracnames <- str_replace_all(pracnames, "Acc", "-acceleration-")
-pracnames <- str_replace_all(pracnames, "Gyro", "-gyroscope-")
-pracnames <- str_replace_all(pracnames, "Mag", "-magnitude")
-pracnames <- str_replace_all(pracnames, "\\(\\)", "")
-pracnames <- str_replace_all(pracnames, "^t", "time-")
-pracnames <- str_replace_all(pracnames, "^f", "frequency-")
-pracnames <- str_replace_all(pracnames, "tBody", "time-body-")
-pracnames <- str_replace_all(pracnames, "BodyBody", "body")
-pracnames <- str_replace_all(pracnames, "--", "-")
-#Set the names to lower case
-pracnames <- tolower(pracnames)
-
-#Replace the names in skinny with the ones in the temporary variable.
-names(skinny) <- pracnames
-
-print("step 4 complete")
-
-### Step 5: use tidyr to gather measurements into tidy data (1 line per observation)
-
-#Take the skinny variable and collapse columns into key-value pairs.
-ttidy <- skinny %>% gather(sensor, Value, 4:69)
-
-# Aggregate the data, order the columns and order the rows.
-ttidy <- aggregate(Value ~ sensor + subject + activity, data=ttidy,
-                    mean, na.rm=TRUE)%>%
-        select(subject, activity, sensor, Value)%>%
-        group_by(subject, activity, sensor)
-
-#Make all the column names start with a capital letter to look more consistent.
-colnames(ttidy) <- c("Subject", "Activity", "Sensor", "Value")
+# Compute mean per subject, per activity, per sensor
+dataset = dataset %>% group_by(subject, activity, sensor) %>%
+  summarise(mean(value))
 
 # Write out tidy data set to a .txt file.
-write.table(ttidy, "tidy_data.txt", row.name = FALSE)
-
-print("step 5 complete")
+write.table(dataset, "tidy_data.txt", row.name = FALSE)
 ```
+
 
 #Tidy data file
-The result of the data processing were saved in a separate text file (tidy_data.txt). This file follows the [principles of tidy data](http://vita.had.co.nz/papers/tidy-data.pdf). The result consists of 4 variables and 11880 rows. The variables used in the tidy file are the following:
+The result of the data processing were saved in a separate text file (tidy_data.txt). The result consists of 4 variables and 11880 rows. The variables used in the tidy file are the following:
 
 
 ```
-## [1] "Subject"  "Activity" "Sensor"   "Value"
+## [1] "subject"  "activity" "sensor"   "value"
 ```
 
 All variables are detailed described in the [Code Book.md](https://github.com/JorisSchut/Data-Science/blob/master/Cleaning/wk3/Codebook.md). Please refer to this document for a more detailed explanation of the variables.
