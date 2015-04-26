@@ -26,7 +26,7 @@ The sensor signals (accelerometer and gyroscope) were pre-processed by applying 
 
 A video of the experiment including an example of the 6 recorded activities with one of the participants can be seen in the following link: [Web Link](https://www.youtube.com/watch?v=XOEN9W05_4A)
 
-###Attribute information [1]
+###Attribute information 
 For each record in the data set it is provided: 
 - Triaxial acceleration from the accelerometer (total acceleration) and the estimated body acceleration. 
 - Triaxial Angular velocity from the gyroscope. 
@@ -136,7 +136,5 @@ The result of the data processing were saved in a separate text file (tidy_data.
 ## [1] "subject"  "activity" "sensor"   "value"
 ```
 
-All variables are detailed described in the [Code Book.md](https://github.com/JorisSchut/Data-Science/blob/master/Cleaning/wk3/Codebook.md). Please refer to this document for a more detailed explanation of the variables.
+All variables are detailed described in the [Code Book.md](https://github.com/amr2393/Cleaning_data/blob/master/CODEBOOK.md). Please refer to this document for a more detailed explanation of the variables.
 
-##Sources
-1. [UCI Machine learning repostiory](http://archive.ics.uci.edu/ml/datasets/Human+Activity+Recognition+Using+Smartphones)
